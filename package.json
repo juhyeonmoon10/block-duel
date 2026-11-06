@@ -1,0 +1,16 @@
+{
+  "name": "block-duel",
+  "version": "1.0.0",
+  "description": "브라우저 온라인 1v1 / 2v2 블록 FPS (축제 부스용)",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "three": "0.170.0"
+  }
+}
