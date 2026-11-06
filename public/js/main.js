@@ -1,5 +1,5 @@
 // 화면 전환, 로비/대기실 UI, 서버 이벤트 연결
-import { WEAPONS, SLOTS, SLOT_LABEL, DEFAULT_LOADOUT, weaponsForSlot, sanitizeLoadout } from '/shared/weapons.js';
+import { WEAPONS, SLOTS, SLOT_LABEL, DEFAULT_LOADOUT, weaponsForSlot, sanitizeLoadout, shotsToKill } from '/shared/weapons.js';
 import { MAPS, MAP_IDS } from '/shared/maps.js';
 import { Game, TEAM_NAME } from './game.js';
 import { Hud, esc } from './hud.js';
@@ -176,12 +176,14 @@ $('set-quality').addEventListener('change', (e) => {
 // ═════════════ 무기 선택 ═════════════
 function statBars(w) {
   const bar = (label, v) => `<div class="stat"><span>${label}</span><i><b style="width:${Math.round(Math.max(0.05, Math.min(1, v)) * 100)}%"></b></i></div>`;
+  const stk = (t) => `<div class="stk">${t}</div>`;
   if (w.kind === 'gun') {
-    return bar('위력', (w.dmg * (w.pellets || 1)) / 108) + bar('연사', (w.burst ? w.rpm * w.burst : w.rpm) / 1300) +
+    return stk(`처치: 몸 ${shotsToKill(w)}방 · 헤드 ${shotsToKill(w, true)}방${w.pellets ? ' (근접)' : ''}`) +
+      bar('위력', (w.dmg * (w.pellets || 1)) / 56) + bar('연사', (w.burst ? w.rpm * w.burst : w.rpm) / 1300) +
       bar('사거리', Math.min(999, w.falloff?.[1] || 0) / 80) + bar('기동', ((w.speed || 1) - 0.65) / 0.55);
   }
-  if (w.kind === 'proj') return bar('위력', w.dmg / 108) + bar('범위', w.radius / 5) + bar('기동', ((w.speed || 1) - 0.65) / 0.55);
-  if (w.kind === 'melee') return bar('위력', w.dmg / 65) + bar('속도', 0.42 / w.rate) + bar('리치', w.range / 3.3) + bar('기동', ((w.speed || 1) - 0.65) / 0.55);
+  if (w.kind === 'proj') return stk(`처치: 직격 ${shotsToKill(w)}방`) + bar('위력', w.dmg / 66) + bar('범위', w.radius / 5) + bar('기동', ((w.speed || 1) - 0.65) / 0.55);
+  if (w.kind === 'melee') return stk(`처치: ${shotsToKill(w)}방`) + bar('위력', w.dmg / 36) + bar('속도', 0.42 / w.rate) + bar('리치', w.range / 3.3) + bar('기동', ((w.speed || 1) - 0.65) / 0.55);
   return '';
 }
 
