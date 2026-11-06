@@ -15,6 +15,10 @@
 - **맵 3개**: 블록 창고, 루프탑, 큐브 아레나 (전부 Z축 대칭이라 공정)
 - **라이벌 연출**: 경기 시작 VS 화면, 연승 기록, 1:1 상대 전적, 현재 왕좌(최고 연승 중인 사람), 도발(T), 한 판 더(리매치)
 - **판정은 서버가**: 연사 속도, 데미지, 벽 너머 사격, 장비 개수 모두 서버에서 검증
+- **3D 모델**: 총·캐릭터·맵 소품은 전부 CC0(퍼블릭 도메인) 에셋 — 출처는 [CREDITS.md](CREDITS.md)
+  - 캐릭터는 달리기·점프·조준·근접 공격·사망 애니메이션이 있고 팀 색으로 칠해짐
+  - 무기 선택 화면, HUD, 킬피드, VS 화면에 총기 사진 표시
+  - 느린 크롬북이면 자동으로 그림자를 끄고 화질을 낮춤
 
 ## 실행 (축제 당일, 노트북 1대를 서버로)
 
@@ -85,7 +89,9 @@ GitHub Pages는 정적 파일만 올릴 수 있어서 대전 서버가 돌아가
 | 맵 수정·추가 | `shared/maps.js` (박스 좌표만 쓰면 됨) |
 | 라운드 시간, 준비 시간 | `server/room.js` 맨 위 `T` |
 | 이동 속도, 점프, 중력 | `shared/physics.js` |
-| 무기 모양 | `public/js/models.js` |
+| 무기 3D 모델 크기·손잡이 위치 | `public/js/assets.js` (`WEAPON_MODELS`) |
+| 1인칭 무기 크기 | `public/js/models.js` (`VM`) |
+| 맵 텍스처·장식 | `public/js/mapskin.js` |
 | 화면 디자인 | `public/css/style.css` |
 
 ## 구조
@@ -98,4 +104,7 @@ public/js/game.js  3D 렌더링(three.js), 조작, 총기, 이펙트
 public/js/main.js  로비/대기실 화면, 서버 이벤트 연결
 public/js/hud.js   체력, 탄약, 킬피드 등 화면 표시
 public/js/audio.js 효과음 (전부 코드로 합성, 음원 파일 없음)
+public/js/assets.js 3D 모델 로더 (무기, 캐릭터, 텍스처)
+public/js/mapskin.js 맵별 텍스처와 장식
+public/assets/     3D 모델(.glb), 텍스처, 무기 아이콘
 ```
