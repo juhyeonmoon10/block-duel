@@ -8,8 +8,8 @@ import {
 export const T = {
   VS: 3500,
   COUNTDOWN: 3000,
-  ROUND_1V1: 75000,
-  ROUND_2V2: 90000,
+  ROUND_1V1: 90000,
+  ROUND_2V2: 110000,
   ROUND_END: 3500,
   MATCH_END: 8000,
 };
