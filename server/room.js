@@ -15,6 +15,21 @@ export const T = {
 };
 
 const TEAM_NAME = ['레드', '블루'];
+// 지연 보정: 최근 이 시간 동안 적이 있던 위치 중 어디든 맞으면 인정 (한국↔해외 서버 핑 대비)
+const HIST_MS = 1000;
+const HIT_MARGIN = 0.55;
+
+// 플레이어가 최근 HIST_MS 동안 있었던 위치들 (현재 포함)
+function recentPositions(tgt) {
+  const now = Date.now();
+  const out = [tgt.p];
+  for (let i = tgt.hist.length - 1; i >= 0; i--) {
+    const h = tgt.hist[i];
+    if (now - h[0] > HIST_MS) break;
+    out.push([h[1], h[2], h[3]]);
+  }
+  return out;
+}
 
 export class Room {
   constructor(io, id, opts, hooks) {
@@ -51,7 +66,7 @@ export class Room {
       id: socket.id, socket, name, team, ready: false,
       loadout: sanitizeLoadout(loadout),
       alive: false, hp: MAX_HP, p: [0, 0, 0], yaw: 0, pitch: 0, w: 'ar', ads: false,
-      lastStateAt: 0, shots: {}, lastMelee: 0, utilLeft: 0,
+      lastStateAt: 0, shots: {}, lastMelee: 0, utilLeft: 0, hist: [],
       kills: 0, deaths: 0, dmg: 0,
     };
     this.players.set(socket.id, p);
@@ -183,6 +198,7 @@ export class Room {
       p.shots = {};
       p.utilLeft = WEAPONS[p.loadout.utility].count || 0;
       p.lastStateAt = Date.now();
+      p.hist = [[Date.now(), p.p[0], p.p[1], p.p[2]]];
       p.socket.emit('spawn', { p: p.p, yaw: p.yaw, loadout: p.loadout, utilLeft: p.utilLeft, round: this.round });
     }
     this.setPhase('countdown', T.COUNTDOWN);
@@ -255,6 +271,8 @@ export class Room {
     }
     p.p = np;
     p.lastStateAt = now;
+    p.hist.push([now, np[0], np[1], np[2]]);
+    while (p.hist.length > 2 && now - p.hist[0][0] > HIST_MS) p.hist.shift();
     if (p.p[1] < this.map.killY) this.kill(p, null, 'fall', false);
   }
 
@@ -279,8 +297,7 @@ export class Room {
     if (w.kind !== 'gun') return;
     const o = Array.isArray(m.o) ? m.o.map(Number) : null;
     if (!o || o.some((v) => !Number.isFinite(v))) return;
-    const eye = [p.p[0], p.p[1] + EYE_H, p.p[2]];
-    if (dist3(o, eye) > 3) return;
+    if (!recentPositions(p).some((q) => dist3(o, [q[0], q[1] + EYE_H, q[2]]) <= 2.5)) return;
 
     // 다른 사람 화면에 총알 궤적 표시
     const ends = Array.isArray(m.e) ? m.e.slice(0, w.pellets || 1) : [];
@@ -294,10 +311,11 @@ export class Room {
       const hp = Array.isArray(h.p) ? h.p.map(Number) : null;
       if (!hp || hp.some((v) => !Number.isFinite(v))) continue;
       // 지연 보정 허용범위: 서버가 알고 있는 위치 근처여야 인정
-      const near = playerBoxes(tgt.p).some((b) =>
-        hp[0] > b.min[0] - 1.6 && hp[0] < b.max[0] + 1.6 &&
-        hp[1] > b.min[1] - 1.2 && hp[1] < b.max[1] + 1.2 &&
-        hp[2] > b.min[2] - 1.6 && hp[2] < b.max[2] + 1.6);
+      const M = HIT_MARGIN;
+      const near = recentPositions(tgt).some((pos) => playerBoxes(pos).some((b) =>
+        hp[0] > b.min[0] - M && hp[0] < b.max[0] + M &&
+        hp[1] > b.min[1] - M - 0.4 && hp[1] < b.max[1] + M &&
+        hp[2] > b.min[2] - M && hp[2] < b.max[2] + M));
       if (!near) continue;
       if (!lineOfSight(o, hp, this.map.boxes)) continue;
       if (this.blockedBySmoke(o, hp) && w.scope) continue;
@@ -326,8 +344,12 @@ export class Room {
     for (const tid of ids) {
       const tgt = this.players.get(tid);
       if (!tgt || !tgt.alive || tgt.team === p.team) continue;
-      const chest = [tgt.p[0], tgt.p[1] + 1.1, tgt.p[2]];
-      if (dist3(eye, chest) > w.range + 1.6) continue;
+      let chest = null, best = Infinity;
+      for (const q of recentPositions(tgt)) {
+        const c = [q[0], q[1] + 1.1, q[2]], dd = dist3(eye, c);
+        if (dd < best) { best = dd; chest = c; }
+      }
+      if (best > w.range + 1.2) continue;
       if (!lineOfSight(eye, chest, this.map.boxes)) continue;
       const dir = norm3([tgt.p[0] - p.p[0], 0, tgt.p[2] - p.p[2]]);
       this.damage(tgt, w.dmg, p, m.w, false, eye);
