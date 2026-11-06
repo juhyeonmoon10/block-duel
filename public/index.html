@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BLOCK DUEL</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='16' fill='%23ff4b3e'/%3E%3Crect x='8' width='8' height='16' fill='%232f7bff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gothic+A1:wght@500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three.module.js", "three/addons/": "/vendor/jsm/" } }
+  </script>
+  <script src="/socket.io/socket.io.min.js"></script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="split-bg" aria-hidden="true"><div class="side red"></div><div class="side blue"></div></div>
+
+  <!-- ═══════════ 로비 ═══════════ -->
+  <section id="lobby" class="screen">
+    <header class="brand">
+      <h1 class="logo"><span class="l-red">BLOCK</span><span class="l-blue">DUEL</span></h1>
+      <p class="tag">각자 기기로 들어와서 붙는 1:1, 2:2 블록 총싸움</p>
+      <p class="online" id="online">접속 중 0명</p>
+    </header>
+
+    <div class="lobby-grid">
+      <div class="panel me-panel">
+        <label class="field">
+          <span>닉네임</span>
+          <input id="name" maxlength="12" autocomplete="off" spellcheck="false" placeholder="이름 입력">
+        </label>
+
+        <div class="loadout-sum">
+          <div class="ls-head"><span>내 무기</span><button class="btn small" id="btn-loadout">무기 바꾸기</button></div>
+          <div id="loadout-chips" class="chips"></div>
+        </div>
+
+        <div class="quick">
+          <button class="btn huge red" data-quick="1"><b>1 : 1</b><span>빠른 대전</span></button>
+          <button class="btn huge blue" data-quick="2"><b>2 : 2</b><span>빠른 대전</span></button>
+        </div>
+
+        <details class="create">
+          <summary>방 만들기</summary>
+          <div class="create-body">
+            <div class="seg" data-name="mode"><button data-v="1" class="on">1 : 1</button><button data-v="2">2 : 2</button></div>
+            <select id="create-map"></select>
+            <div class="seg" data-name="rounds"><button data-v="3" class="on">3선승</button><button data-v="5">5선승</button></div>
+            <button class="btn yellow" id="btn-create">방 만들기</button>
+          </div>
+        </details>
+
+        <div class="join">
+          <input id="join-code" maxlength="4" placeholder="방 코드" autocomplete="off" spellcheck="false">
+          <button class="btn" id="btn-join">입장</button>
+          <button class="btn ghost" id="btn-spectate">관전</button>
+        </div>
+
+        <details class="settings">
+          <summary>설정</summary>
+          <label class="range"><span>마우스 감도 <b id="sens-v"></b></span><input type="range" id="set-sens" min="0.2" max="3" step="0.05"></label>
+          <label class="range"><span>시야각 <b id="fov-v"></b></span><input type="range" id="set-fov" min="65" max="100" step="1"></label>
+          <label class="range"><span>음량 <b id="vol-v"></b></span><input type="range" id="set-vol" min="0" max="1" step="0.05"></label>
+          <label class="range"><span>화질</span>
+            <select id="set-quality"><option value="1">보통</option><option value="0.75">가볍게 (느린 크롬북)</option><option value="0.55">아주 가볍게</option></select>
+          </label>
+        </details>
+      </div>
+
+      <div class="panel rooms-panel">
+        <h2>열린 방</h2>
+        <ul id="room-list" class="room-list"></ul>
+      </div>
+
+      <div class="panel rank-panel">
+        <h2>연승 랭킹</h2>
+        <div id="king" class="king"></div>
+        <ol id="rank-list" class="rank-list"></ol>
+      </div>
+    </div>
+
+    <div class="keys-guide">
+      <kbd>W A S D</kbd> 이동 <kbd>Space</kbd> 점프 <kbd>클릭</kbd> 발사 <kbd>우클릭</kbd> 조준
+      <kbd>R</kbd> 재장전 <kbd>1~4</kbd> 무기 <kbd>Q</kbd> 이전 무기 <kbd>G</kbd> 장비 <kbd>T</kbd> 도발 <kbd>Tab</kbd> 점수판
+    </div>
+  </section>
+
+  <!-- ═══════════ 대기실 ═══════════ -->
+  <section id="room" class="screen hidden">
+    <div class="room-top">
+      <div class="code-box"><span>방 코드</span><b id="room-code">----</b></div>
+      <div class="room-meta">
+        <h2 id="room-name"></h2>
+        <p id="room-desc"></p>
+      </div>
+      <button class="btn ghost" id="btn-leave">나가기</button>
+    </div>
+
+    <div id="host-settings" class="host-settings">
+      <div class="seg" data-name="hmode"><button data-v="1">1 : 1</button><button data-v="2">2 : 2</button></div>
+      <select id="host-map"></select>
+      <div class="seg" data-name="hrounds"><button data-v="3">3선승</button><button data-v="5">5선승</button></div>
+    </div>
+
+    <div class="teams">
+      <div class="team-col red" id="team-0"></div>
+      <div class="vs-mark">VS</div>
+      <div class="team-col blue" id="team-1"></div>
+    </div>
+
+    <div class="room-actions">
+      <button class="btn" id="btn-team">팀 바꾸기</button>
+      <button class="btn" id="btn-loadout2">무기 바꾸기</button>
+      <button class="btn yellow big" id="btn-ready">준비 완료</button>
+    </div>
+    <p class="room-hint" id="room-hint"></p>
+    <p class="spectators" id="spectators"></p>
+  </section>
+
+  <!-- ═══════════ 무기 선택 ═══════════ -->
+  <div id="loadout-modal" class="modal hidden" role="dialog" aria-label="무기 선택">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>무기 고르기</h2>
+        <p>슬롯마다 하나씩. 라운드 사이 카운트다운 중에 <kbd>B</kbd>로도 바꿀 수 있어요.</p>
+      </div>
+      <div id="loadout-cols" class="loadout-cols"></div>
+      <div class="modal-foot"><button class="btn yellow big" id="btn-loadout-done">이걸로 할게요</button></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 게임 HUD ═══════════ -->
+  <div id="hud" class="hidden">
+    <div id="scorebar">
+      <div class="sb-team red"><span class="sb-names" id="sb-red-names"></span><div class="pips" id="sb-red-pips"></div><b id="sb-red">0</b></div>
+      <div class="sb-mid"><div id="sb-round"></div><div id="sb-timer"></div></div>
+      <div class="sb-team blue"><b id="sb-blue">0</b><div class="pips" id="sb-blue-pips"></div><span class="sb-names" id="sb-blue-names"></span></div>
+    </div>
+    <div id="killfeed"></div>
+    <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
+    <div id="hitmarker"></div>
+    <div id="dmg-numbers"></div>
+    <div id="dmg-dirs"></div>
+    <div id="center-msg"><div class="big"></div><div class="sub"></div></div>
+    <div id="progress" class="hidden"><div class="label"></div><div class="bar"><i></i></div></div>
+    <div id="hp-box"><div class="hp-label">체력</div><div id="hp-num">100</div><div class="hp-bar"><i id="hp-fill"></i></div></div>
+    <div id="weapon-box">
+      <div id="w-name"></div>
+      <div id="w-ammo"><b id="ammo-cur">0</b><span id="ammo-mag"></span></div>
+      <div id="w-reload"><i></i></div>
+      <div id="slots"></div>
+    </div>
+    <div id="ping"></div>
+    <div id="taunt-menu" class="hidden"></div>
+    <div id="death-box" class="hidden"></div>
+    <div id="spec-box" class="hidden"></div>
+    <div id="scoreboard" class="hidden"></div>
+  </div>
+  <div id="scope" class="hidden"><div class="lens"></div></div>
+  <div id="vignette"></div>
+  <div id="smoke-cover"></div>
+
+  <!-- 시작 전 VS 화면 -->
+  <div id="vs-overlay" class="hidden">
+    <div class="vs-side red"><div class="vs-names" id="vs-red"></div></div>
+    <div class="vs-side blue"><div class="vs-names" id="vs-blue"></div></div>
+    <div class="vs-center"><div class="vs-big">VS</div><div class="vs-sub" id="vs-sub"></div></div>
+  </div>
+
+  <!-- 경기 결과 -->
+  <div id="result-overlay" class="hidden">
+    <div class="result-card">
+      <div class="result-title" id="result-title"></div>
+      <div class="result-score" id="result-score"></div>
+      <div class="result-streak" id="result-streak"></div>
+      <table class="result-table" id="result-table"></table>
+      <div class="result-actions">
+        <button class="btn yellow big" id="btn-rematch">한 판 더</button>
+        <button class="btn ghost" id="btn-result-leave">로비로</button>
+      </div>
+      <p class="result-note" id="result-note"></p>
+    </div>
+  </div>
+
+  <!-- 클릭해서 시작 / 일시정지 -->
+  <div id="play-overlay" class="hidden">
+    <div class="play-card">
+      <button class="btn huge yellow" id="btn-play">클릭해서 플레이</button>
+      <div class="play-keys">
+        <div><kbd>W A S D</kbd>이동</div><div><kbd>Space</kbd>점프</div>
+        <div><kbd>클릭</kbd>발사</div><div><kbd>우클릭</kbd>조준</div>
+        <div><kbd>R</kbd>재장전</div><div><kbd>1 2 3</kbd>무기</div>
+        <div><kbd>G</kbd>장비 사용</div><div><kbd>Q</kbd>이전 무기</div>
+        <div><kbd>T</kbd>도발</div><div><kbd>Tab</kbd>점수판</div>
+        <div><kbd>B</kbd>무기 변경(라운드 사이)</div><div><kbd>Esc</kbd>멈춤</div>
+      </div>
+      <div class="play-actions">
+        <button class="btn" id="btn-play-loadout">무기 바꾸기</button>
+        <button class="btn ghost" id="btn-play-leave">방 나가기</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
