@@ -1,5 +1,6 @@
 // 게임 화면 위 HTML 오버레이 (체력, 탄약, 크로스헤어, 킬피드 등)
 import { WEAPONS, SLOTS } from '/shared/weapons.js';
+import { iconUrl } from './assets.js';
 
 const $ = (id) => document.getElementById(id);
 const TEAM_CLASS = ['red', 'blue'];
@@ -37,6 +38,7 @@ export class Hud {
     const w = WEAPONS[key];
     if (!w) return;
     this.el.wName.textContent = w.name;
+    if (this._wIcon !== key) { this._wIcon = key; const im = document.getElementById('w-icon'); if (im) im.src = iconUrl(key); }
     if (w.kind === 'gun' || w.kind === 'proj') {
       this.el.ammoCur.textContent = ammo;
       this.el.ammoMag.textContent = '/ ' + mag;
@@ -65,7 +67,7 @@ export class Hud {
     const html = SLOTS.map((s, i) => {
       const w = WEAPONS[loadout[s]];
       const extra = s === 'utility' ? ` <em>×${utilLeft}</em>` : '';
-      return `<div class="slot ${s === cur ? 'on' : ''} ${s === 'utility' && utilLeft === 0 ? 'out' : ''}"><kbd>${s === 'utility' ? 'G' : i + 1}</kbd>${w.name}${extra}</div>`;
+      return `<div class="slot ${s === cur ? 'on' : ''} ${s === 'utility' && utilLeft === 0 ? 'out' : ''}"><kbd>${s === 'utility' ? 'G' : i + 1}</kbd><img src="${iconUrl(loadout[s])}" alt="">${w.name}${extra}</div>`;
     }).join('');
     if (html !== this._slotsHtml) { this.el.slots.innerHTML = html; this._slotsHtml = html; }
   }
@@ -135,7 +137,7 @@ export class Hud {
     const w = WEAPONS[weapon];
     const wname = weapon === 'fall' ? '추락' : (w ? w.name : weapon);
     row.innerHTML = (killer ? `<b class="${TEAM_CLASS[killer.team]}">${esc(killer.name)}</b>` : '') +
-      `<span class="kw">${esc(wname)}${head ? ' <i>헤드샷</i>' : ''}</span>` +
+      `<span class="kw">${w ? `<img src="${iconUrl(weapon)}" alt="${esc(wname)}" title="${esc(wname)}">` : esc(wname)}${head ? ' <i>헤드샷</i>' : ''}</span>` +
       `<b class="${TEAM_CLASS[victim.team]}">${esc(victim.name)}</b>`;
     this.el.killfeed.prepend(row);
     while (this.el.killfeed.children.length > 5) this.el.killfeed.lastChild.remove();

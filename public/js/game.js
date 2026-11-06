@@ -7,7 +7,9 @@ import {
   EYE_H, JUMP_V, WALK_SPEED, moveAndCollide, rayMap, rayPlayer, lookDir, lineOfSight,
 } from '/shared/physics.js';
 import * as A from './audio.js';
-import { buildViewmodel, buildAvatar, setAvatarWeapon, makeNameTag, drawNameTag } from './models.js';
+import { buildViewmodel, buildAvatar, setAvatarWeapon, makeNameTag, drawNameTag, animateAvatar } from './models.js';
+import * as AS from './assets.js';
+import { SKINS } from './mapskin.js';
 import { esc } from './hud.js';
 
 export const TEAM_COLOR = ['#ff4b3e', '#2f7bff'];
@@ -177,21 +179,33 @@ export class Game {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.autoClear = false;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(settings.fov || 80, 1, 0.05, 400);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
-    const hemi = new THREE.HemisphereLight('#ffffff', '#7d7466', 1.9);
-    const sun = new THREE.DirectionalLight('#fff4e0', 1.9);
-    sun.position.set(0.45, 1, 0.3);
-    this.scene.add(hemi, sun);
+    this.hemi = new THREE.HemisphereLight('#e6f3ff', '#8a7f72', 2.1);
+    const sun = new THREE.DirectionalLight('#fff1d6', 2.6);
+    sun.position.set(18, 34, 12);
+    sun.castShadow = true;
+    sun.shadow.camera.left = -34; sun.shadow.camera.right = 34;
+    sun.shadow.camera.top = 34; sun.shadow.camera.bottom = -34;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 90;
+    sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+    this.sun = sun;
+    this.scene.add(this.hemi, sun, sun.target);
 
     this.viewScene = new THREE.Scene();
     this.viewCam = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
-    this.viewScene.add(new THREE.HemisphereLight('#ffffff', '#666666', 2.0));
-    const vs = new THREE.DirectionalLight('#ffffff', 1.6);
-    vs.position.set(0.3, 1, 0.6);
+    this.viewScene.add(new THREE.HemisphereLight('#ffffff', '#5d6474', 2.2));
+    const vs = new THREE.DirectionalLight('#fff4e0', 2.4);
+    vs.position.set(0.4, 1, 0.5);
+    const vr = new THREE.DirectionalLight('#a8c8ff', 0.9);
+    vr.position.set(-0.6, 0.3, -0.4);
+    this.viewScene.add(vr);
     this.viewScene.add(vs);
     this.viewRoot = new THREE.Group();
     this.viewScene.add(this.viewRoot);
@@ -264,6 +278,22 @@ export class Game {
   applySettings(s) {
     this.settings = s;
     this.resize();
+    this.applyShadows();
+  }
+
+  applyShadows() {
+    const q = this.settings.quality || 1;
+    const on = q >= 0.99;
+    if (this.renderer.shadowMap.enabled !== on) {
+      this.renderer.shadowMap.enabled = on;
+      this.scene.traverse((o) => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach((m) => (m.needsUpdate = true)); } });
+    }
+    const size = 1024;
+    if (on && this.sun.shadow.mapSize.x !== size) {
+      this.sun.shadow.mapSize.set(size, size);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
   }
 
   serverNow() { return Date.now() + this.timeOffset; }
@@ -300,8 +330,8 @@ export class Game {
   }
 
   // ─────────────── 맵 ───────────────
-  loadMap(id) {
-    if (this.mapId === id) return;
+  loadMap(id, force) {
+    if (this.mapId === id && !force) return;
     const map = MAPS[id];
     if (!map) return;
     if (this.mapGroup) {
@@ -311,23 +341,107 @@ export class Game {
     this.mapId = id;
     this.map = map;
     this.boxes = map.boxes;
+    const skin = SKINS[id] || { colors: {}, deco: [] };
+    this.mapTextured = !!AS.tex('concrete');
+    const group = new THREE.Group();
+    // 1) 색깔별로 합친 텍스처 박스
     const byColor = new Map();
     for (const b of map.boxes) {
+      if (b.p && this.mapTextured) continue; // 소품이 대신 그려짐
       if (!byColor.has(b.c)) byColor.set(b.c, []);
       byColor.get(b.c).push(worldBoxGeometry(b));
     }
-    const group = new THREE.Group();
-    const tex = getBlockTexture();
     for (const [color, geos] of byColor) {
       const merged = mergeGeometries(geos, false);
       geos.forEach((g) => g.dispose());
-      const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ color, map: tex }));
+      const mesh = new THREE.Mesh(merged, this.mapMaterial(color, skin.colors[color]));
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       group.add(mesh);
     }
+    // 2) 충돌 박스 크기에 맞춘 3D 소품
+    const props = map.boxes.filter((b) => b.p).map((b) => ({ prop: b.p, box: [b.min[0], b.min[1], b.min[2], b.max[0], b.max[1], b.max[2]] }));
+    // 3) 장식 (충돌 없음)
+    for (const d of skin.deco || []) {
+      if (d.glow) {
+        const [x0, y0, z0, x1, y1, z1] = d.box;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), new THREE.MeshBasicMaterial({ color: d.glow }));
+        m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+        group.add(m);
+      } else props.push(d);
+    }
+    if (this.mapTextured) this.placeProps(group, props, id);
     this.mapGroup = group;
     this.scene.add(group);
-    this.scene.background = new THREE.Color(map.sky);
-    this.scene.fog = new THREE.Fog(map.fog, map.fogNear, map.fogFar);
+    this.scene.background = this.skyTexture(skin.sky || [map.sky, map.fog]);
+    this.scene.fog = new THREE.Fog(skin.sky ? skin.sky[1] : map.fog, map.fogNear + 10, map.fogFar + 30);
+    this.applyShadows();
+  }
+
+  mapMaterial(color, sk) {
+    if (!this.mapTextured || !sk) {
+      return new THREE.MeshLambertMaterial({ color, map: getBlockTexture() });
+    }
+    if (sk.color) return new THREE.MeshLambertMaterial({ color: sk.color });
+    const base = AS.tex(sk.t);
+    if (!base) return new THREE.MeshLambertMaterial({ color, map: getBlockTexture() });
+    const t = base.clone();
+    t.needsUpdate = true;
+    t.repeat.set(sk.s || 1, sk.s || 1);
+    return new THREE.MeshLambertMaterial({ color: sk.tint || '#ffffff', map: t });
+  }
+
+  async placeProps(group, list, id) {
+    for (const d of list) {
+      const obj = await AS.getProp(d.prop).catch(() => null);
+      if (!obj || this.mapId !== id) return;
+      const holder = new THREE.Group();
+      holder.add(obj);
+      obj.updateMatrixWorld(true);
+      const bb = new THREE.Box3().setFromObject(obj);
+      const bs = bb.getSize(new THREE.Vector3());
+      let w, h, dpt, cx, cz, y0;
+      if (d.box) {
+        const [x0, yy0, z0, x1, y1, z1] = d.box;
+        w = x1 - x0; h = y1 - yy0; dpt = z1 - z0; cx = (x0 + x1) / 2; cz = (z0 + z1) / 2; y0 = yy0;
+      } else {
+        [w, h, dpt] = d.size; [cx, y0, cz] = d.at;
+      }
+      // 소품의 긴 쪽을 박스의 긴 쪽에 맞춤
+      let rot = d.rot || 0;
+      const propLongZ = bs.z >= bs.x, boxLongZ = dpt >= w;
+      if (d.box && propLongZ !== boxLongZ) rot += Math.PI / 2;
+      const swap = Math.abs(Math.sin(rot)) > 0.7;
+      const sx = (swap ? dpt : w) / bs.x, sz = (swap ? w : dpt) / bs.z, sy = h / bs.y;
+      obj.scale.set(sx, sy, sz);
+      obj.position.set(-((bb.min.x + bb.max.x) / 2) * sx, -bb.min.y * sy, -((bb.min.z + bb.max.z) / 2) * sz);
+      holder.rotation.y = rot;
+      holder.position.set(cx, y0, cz);
+      group.add(holder);
+    }
+  }
+
+  skyTexture([top, bottom]) {
+    const key = top + bottom;
+    if (this._skyKey === key) return this._sky;
+    const c = document.createElement('canvas');
+    c.width = 4; c.height = 256;
+    const g = c.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, top); gr.addColorStop(0.62, bottom); gr.addColorStop(1, bottom);
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    this._sky = t; this._skyKey = key;
+    return t;
+  }
+
+  // 에셋 로딩이 끝난 뒤 다시 그리기
+  onAssetsReady() {
+    if (this.mapId) this.loadMap(this.mapId, true);
+    for (const rp of this.players.values()) rp.rebuild = true;
+    if (this.room) this.setRoom(this.room, this.meId, this.spectator);
+    if (this.loadout && this.L.alive) this.setupWeapons(this.loadout, this.utilLeft);
   }
 
   // ─────────────── 방/플레이어 목록 ───────────────
@@ -349,16 +463,18 @@ export class Game {
         rp = { id: p.id, buf: [], rp: [0, -100, 0], yaw: 0, pitch: 0, alive: false, hp: MAX_HP, w: 'ar', walk: 0, taunt: null, tauntUntil: 0, swing: 0, prevP: null };
         this.players.set(p.id, rp);
       }
-      if (rp.team !== p.team || !rp.avatar) {
-        if (rp.avatar) this.scene.remove(rp.avatar);
+      if (rp.team !== p.team || !rp.avatar || rp.rebuild) {
+        rp.rebuild = false;
+        if (rp.avatar) { this.scene.remove(rp.avatar); if (rp.flash) this.scene.remove(rp.flash); }
         rp.avatar = buildAvatar(TEAM_COLOR[p.team], TEAM_DARK[p.team]);
         rp.tag = makeNameTag();
         rp.avatar.add(rp.tag);
         rp.avatar.visible = false;
+        rp.avatar.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         this.scene.add(rp.avatar);
         rp.flash = this.vmFlash.clone();
         rp.flash.material = this.vmFlash.material;
-        rp.flash.scale.setScalar(1.6);
+        rp.flash.scale.setScalar(rp.avatar.userData.skinned ? 1.1 : 1.6);
         this.scene.add(rp.flash);
       }
       rp.name = p.name;
@@ -559,8 +675,18 @@ export class Game {
         const rp = this.players.get(fx.by);
         if (rp) {
           rp.swing = 1;
+          rp.swingTrig = true;
           const sp = A.spatial(rp.rp, cam, this.camYaw || 0);
           A.swing(sp.vol, sp.pan);
+        }
+        break;
+      }
+      case 'throw': {
+        const rp = this.players.get(fx.by);
+        if (rp) {
+          rp.throwTrig = true;
+          const sp = A.spatial(rp.rp, cam, this.camYaw || 0);
+          A.throwSound(sp.vol, sp.pan);
         }
         break;
       }
@@ -759,10 +885,26 @@ export class Game {
   }
 
   // ─────────────── 프레임 ───────────────
+  // 느린 기기면 자동으로 화질 낮추기 (경기 중 5초 평균 30fps 미만)
+  autoQuality(dt, playing) {
+    if (!playing || this.settings.autoLowered) return;
+    this._fpsT = (this._fpsT || 0) + dt; this._fpsN = (this._fpsN || 0) + 1;
+    if (this._fpsT < 5) return;
+    const fps = this._fpsN / this._fpsT;
+    this._fpsT = 0; this._fpsN = 0;
+    if (fps < 30 && (this.settings.quality || 1) > 0.6) {
+      this.settings.quality = (this.settings.quality || 1) >= 0.99 ? 0.75 : 0.55;
+      if (this.settings.quality <= 0.55) this.settings.autoLowered = true;
+      this.applySettings(this.settings);
+      this.onAutoQuality?.(Math.round(fps), this.settings.quality);
+    }
+  }
+
   frame(dt, t) {
     const now = performance.now();
     this.tauntCd -= dt;
     const playing = this.L.alive && !this.spectator && ['countdown', 'live', 'roundEnd'].includes(this.phase);
+    this.autoQuality(dt, playing);
     if (playing) this.updateLocal(dt);
     else { this.look.dx = this.look.dy = 0; this.mouse.lp = this.mouse.rp = false; this.wheel = 0; }
     this.updateRemotes(dt, now);
@@ -1103,6 +1245,38 @@ export class Game {
       rp.alive = s.alive;
       rp.hp = s.hp;
       const av = rp.avatar, u = av.userData;
+      if (u.skinned) {
+        // 쓰러진 뒤 3초 동안은 사망 동작을 보여주고 숨김
+        if (s.alive) rp.deadAt = 0; else if (!rp.deadAt) rp.deadAt = now;
+        const showCorpse = !s.alive && now - rp.deadAt < 3000;
+        av.visible = s.alive || showCorpse;
+        rp.tag.visible = s.alive;
+        if (!av.visible) { rp.flash.visible = false; continue; }
+        av.position.set(s.p[0], s.p[1], s.p[2]);
+        if (s.alive) av.rotation.y = s.yaw;
+        setAvatarWeapon(av, s.w);
+        const moved = prev ? Math.hypot(s.p[0] - prev[0], s.p[2] - prev[2]) / Math.max(dt, 1e-3) : 0;
+        rp.spd = (rp.spd || 0) + (moved - (rp.spd || 0)) * Math.min(1, dt * 10);
+        const vy = prev ? (s.p[1] - prev[1]) / Math.max(dt, 1e-3) : 0;
+        rp.airT = Math.abs(vy) > 2 ? 0.15 : Math.max(0, (rp.airT || 0) - dt);
+        const kind = WEAPONS[s.w]?.kind;
+        animateAvatar(av, {
+          dt, speed: rp.spd, air: rp.airT > 0, pitch: s.pitch, alive: s.alive,
+          melee: kind === 'melee' || kind === 'heal', swing: rp.swingTrig, throwing: rp.throwTrig,
+        });
+        rp.swingTrig = false; rp.throwTrig = false;
+        if (s.alive) {
+          const taunt = rp.tauntUntil > now ? rp.taunt : null;
+          drawNameTag(rp.tag, rp.name || '', rp.hp, TEAM_COLOR[rp.team], taunt);
+        }
+        rp.flashT = (rp.flashT || 0) - dt;
+        if (rp.flashT > 0 && s.alive) {
+          const m = this.remoteMuzzle(rp);
+          rp.flash.position.set(m[0], m[1], m[2]);
+          rp.flash.visible = true;
+        } else rp.flash.visible = false;
+        continue;
+      }
       av.visible = s.alive;
       if (!s.alive) { rp.flash.visible = false; continue; }
       av.position.set(s.p[0], s.p[1], s.p[2]);

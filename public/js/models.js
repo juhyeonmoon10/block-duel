@@ -1,5 +1,6 @@
 // 블록으로 조립하는 무기/캐릭터 모델. 텍스처 없이 박스만 사용 → 크롬북에서도 가볍게.
 import * as THREE from 'three';
+import * as AS from './assets.js';
 
 const matCache = new Map();
 export function mat(color, opts = {}) {
@@ -184,27 +185,64 @@ export function buildWeapon(key) {
   return g;
 }
 
-// 1인칭 화면에 보이는 팔 + 총
+// 1인칭 화면에 보이는 손 + 총
+const VM_SCALE = 0.42;
+// 무기별 1인칭 크기/위치 보정
+const VM = {
+  minigun: { s: 0.27, p: [0.05, -0.06, 0.02] },
+  rpg: { s: 0.32, p: [0.02, 0.0, 0.04] },
+  sniper: { s: 0.38 },
+  shotgun: { s: 0.4 },
+  katana: { s: 0.26, p: [0.02, -0.02, 0] },
+  hammer: { s: 0.28, p: [0.02, -0.04, 0] },
+  knife: { s: 0.42 },
+  medkit: { s: 0.26, p: [0, -0.01, -0.02] },
+  grenade: { s: 0.4 },
+  smoke: { s: 0.4 },
+};
 export function buildViewmodel(key, teamColor) {
   const root = new THREE.Group();
-  const gun = buildWeapon(key);
+  const real = AS.getWeapon(key);
+  const cfg = AS.WEAPON_MODELS[key];
+  const gun = real || buildWeapon(key);
   root.add(gun);
-  // 손 + 짧은 소매 (화면을 가리지 않게 작게)
-  const arm = new THREE.Group();
-  box(arm, 0.07, 0.07, 0.07, '#f1c8a0', 0, -0.075, 0.02);
-  box(arm, 0.075, 0.075, 0.1, teamColor, 0.01, -0.095, 0.1, -0.5);
-  root.add(arm);
-  gun.scale.setScalar(0.82);
-  arm.scale.setScalar(0.82);
-  root.userData = gun.userData;
+  const v = VM[key] || {};
+  const k = v.s || VM_SCALE;
+  if (real) {
+    if (cfg?.melee) gun.rotation.x = 1.05; // 칼날을 위로 세움
+    gun.scale.multiplyScalar(k);
+    if (v.p) gun.position.set(...v.p);
+    // 손잡이를 쥔 장갑 (작게)
+    const hand = new THREE.Group();
+    box(hand, 0.022, 0.026, 0.03, '#3a3f4b', 0.002, -0.014, 0.004);
+    hand.scale.setScalar(k / VM_SCALE);
+    hand.position.copy(gun.position);
+    if (cfg?.fwd === 'up') hand.position.y -= 0.03;
+    root.add(hand);
+  } else {
+    const arm = new THREE.Group();
+    box(arm, 0.07, 0.07, 0.07, '#f1c8a0', 0, -0.075, 0.02);
+    box(arm, 0.075, 0.075, 0.1, teamColor, 0.01, -0.095, 0.1, -0.5);
+    root.add(arm);
+    gun.scale.setScalar(0.82); arm.scale.setScalar(0.82);
+  }
+  root.userData = { muzzle: gun.userData.muzzle, spin: gun.userData.spin, rocketTip: gun.userData.rocketTip, box: gun.userData.box, real: !!real };
   return root;
 }
 
-// 3인칭 캐릭터
+// 3인칭 캐릭터 (실제 모델이 로드됐으면 애니메이션 캐릭터, 아니면 블록 캐릭터)
 export function buildAvatar(teamColor, darker) {
+  if (AS.charReady()) {
+    const g = AS.makeCharacter(teamColor, darker);
+    g.userData.weapon = null; g.userData.weaponKey = null; g.userData.skinned = true;
+    return g;
+  }
+  return buildBlockAvatar(teamColor, darker);
+}
+
+function buildBlockAvatar(teamColor, darker) {
   const g = new THREE.Group();
   const SKIN = '#f1c8a0', PANTS = '#2e3448', SHOE = '#1d2130';
-
   const legL = new THREE.Group(); legL.position.set(-0.14, 0.8, 0);
   const legR = new THREE.Group(); legR.position.set(0.14, 0.8, 0);
   box(legL, 0.24, 0.72, 0.28, PANTS, 0, -0.36, 0);
@@ -212,29 +250,20 @@ export function buildAvatar(teamColor, darker) {
   box(legR, 0.24, 0.72, 0.28, PANTS, 0, -0.36, 0);
   box(legR, 0.25, 0.1, 0.32, SHOE, 0, -0.75, -0.02);
   g.add(legL, legR);
-
   box(g, 0.62, 0.62, 0.34, teamColor, 0, 1.11, 0);
   box(g, 0.64, 0.08, 0.36, darker, 0, 0.84, 0);
-
   const head = new THREE.Group(); head.position.set(0, 1.42, 0);
   box(head, 0.46, 0.44, 0.46, SKIN, 0, 0.23, 0);
   box(head, 0.48, 0.1, 0.48, darker, 0, 0.36, 0);
-  box(head, 0.48, 0.07, 0.2, darker, 0, 0.42, 0.1);
-  box(head, 0.07, 0.08, 0.02, '#1d2130', -0.1, 0.22, -0.235);
-  box(head, 0.07, 0.08, 0.02, '#1d2130', 0.1, 0.22, -0.235);
   g.add(head);
-
   const armR = new THREE.Group(); armR.position.set(0.4, 1.36, 0);
   box(armR, 0.18, 0.18, 0.56, teamColor, 0, 0, -0.22);
-  box(armR, 0.16, 0.16, 0.12, SKIN, 0, 0, -0.52);
   const hand = new THREE.Group(); hand.position.set(-0.05, 0, -0.55);
   armR.add(hand);
   const armL = new THREE.Group(); armL.position.set(-0.4, 1.36, 0);
   box(armL, 0.18, 0.18, 0.5, teamColor, 0, 0, -0.2);
-  box(armL, 0.16, 0.16, 0.12, SKIN, 0, 0, -0.48);
   armL.rotation.y = -0.45;
   g.add(armR, armL);
-
   g.userData = { legL, legR, head, armR, armL, hand, weapon: null, weaponKey: null };
   return g;
 }
@@ -242,12 +271,92 @@ export function buildAvatar(teamColor, darker) {
 export function setAvatarWeapon(av, key) {
   const u = av.userData;
   if (u.weaponKey === key) return;
-  if (u.weapon) u.hand.remove(u.weapon);
-  const w = buildWeapon(key);
-  w.scale.setScalar(1.6);
-  u.hand.add(w);
-  u.weapon = w;
+  if (u.weapon) u.weapon.parent?.remove(u.weapon);
+  if (u.skinned) {
+    const real = AS.getWeapon(key);
+    const w = real || buildWeapon(key);
+    w.scale.multiplyScalar(real ? 1.35 : 1.6);
+    av.add(w);
+    u.weapon = w;
+  } else {
+    const w = buildWeapon(key);
+    w.scale.setScalar(1.6);
+    u.hand.add(w);
+    u.weapon = w;
+  }
   u.weaponKey = key;
+}
+
+const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _axis = new THREE.Vector3();
+function fade(u, slot, next, t = 0.18) {
+  const cur = u[slot];
+  if (cur === next) return;
+  next.reset(); next.enabled = true; next.setEffectiveWeight(1); next.play();
+  if (cur) cur.crossFadeTo(next, t, false);
+  u[slot] = next;
+}
+
+// 애니메이션 캐릭터 갱신. o = { dt, speed, air, pitch, alive, melee, swing, throwing, dead }
+export function animateAvatar(av, o) {
+  const u = av.userData;
+  if (!u.skinned) return false;
+  const A = u.actions;
+  if (!o.alive) {
+    if (!u.dead) {
+      u.dead = true;
+      u.mixer.stopAllAction();
+      A.death.reset(); A.death.play();
+      if (u.weapon) u.weapon.visible = false;
+    }
+    u.mixer.update(o.dt);
+    return true;
+  }
+  if (u.dead) {
+    u.dead = false;
+    u.mixer.stopAllAction();
+    u.lower = null; u.upperAct = null;
+    if (u.weapon) u.weapon.visible = true;
+  }
+  // 하체
+  const lower = o.air ? A.jump : o.speed > 4.2 ? A.run : o.speed > 0.6 ? A.walk : A.idle;
+  if (!u.lower) { lower.reset().play(); u.lower = lower; } else fade(u, 'lower', lower);
+  if (lower === A.run) lower.timeScale = Math.max(0.7, o.speed / 6.5);
+  if (lower === A.walk) lower.timeScale = Math.max(0.8, o.speed / 2.6);
+  // 상체
+  let upper = o.melee ? A.idleUp : A.aim;
+  if (o.swing) { A.slash.reset(); upper = A.slash; u.oneShotUntil = performance.now() + 450; }
+  else if (o.throwing) { A.throwUp.reset(); upper = A.throwUp; u.oneShotUntil = performance.now() + 450; }
+  else if (u.oneShotUntil && performance.now() < u.oneShotUntil) upper = u.upperAct;
+  if (!u.upperAct) {
+    if (upper === A.aim) { A.aim.play(); A.aim.paused = true; A.aim.time = A.aim.getClip().duration * AS.AIM_T; } else upper.reset().play();
+    u.upperAct = upper;
+  } else if (upper !== u.upperAct) {
+    if (upper === A.aim) { A.aim.reset(); A.aim.play(); A.aim.paused = true; A.aim.time = A.aim.getClip().duration * AS.AIM_T; }
+    fade(u, 'upperAct', upper, 0.12);
+  }
+  if (u.torsoRest) u.bones.Torso.quaternion.copy(u.torsoRest);
+  u.mixer.update(o.dt);
+  // 위아래 시선: 상체를 시선 방향으로 숙이거나 젖힘
+  av.updateMatrixWorld(true);
+  const torso = u.bones.Torso;
+  if (torso && torso.parent) {
+    _axis.set(1, 0, 0).applyQuaternion(av.getWorldQuaternion(_q));
+    torso.parent.getWorldQuaternion(_q2).invert();
+    _axis.applyQuaternion(_q2).normalize();
+    torso.quaternion.premultiply(_q.setFromAxisAngle(_axis, -o.pitch * 0.7));
+    torso.updateMatrixWorld(true);
+  }
+  // 무기를 오른손 위치에 붙이고 시선 방향으로
+  const hand = u.bones.FistR;
+  if (u.weapon && hand) {
+    hand.getWorldPosition(_v);
+    av.worldToLocal(_v);
+    u.weapon.position.copy(_v);
+    const cfg = AS.WEAPON_MODELS[u.weaponKey] || {};
+    u.weapon.rotation.set(o.pitch + (cfg.melee ? 1.1 : 0), 0, 0);
+    if (o.swing || (u.upperAct === A.slash && performance.now() < (u.oneShotUntil || 0))) u.weapon.rotation.x -= 1.4;
+  }
+  return true;
 }
 
 // 이름표 (이름 + 체력바)

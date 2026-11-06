@@ -4,6 +4,7 @@ import { MAPS, MAP_IDS } from '/shared/maps.js';
 import { Game, TEAM_NAME } from './game.js';
 import { Hud, esc } from './hud.js';
 import * as A from './audio.js';
+import * as AS from './assets.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -22,6 +23,10 @@ const socket = io();
 const hud = new Hud();
 const game = new Game({ canvas: $('game'), hud, socket, settings });
 window.__game = game; // 디버그용
+game.onAutoQuality = (fps, q) => {
+  toast(`화면이 버벅여서(${fps}fps) 화질을 자동으로 낮췄어요`);
+  $('set-quality').value = String(q);
+};
 
 // ═════════════ 공통 ═════════════
 function toast(msg, ms = 2600) {
@@ -186,12 +191,12 @@ function renderLoadoutModal() {
       ${weaponsForSlot(s).map((k) => {
         const w = WEAPONS[k];
         return `<button class="wcard ${loadout[s] === k ? 'on' : ''}" data-slot="${s}" data-w="${k}">
-          <div class="wc-name">${w.name}</div><div class="wc-desc">${w.desc}</div>${statBars(w)}</button>`;
+          <img class="wc-img" src="${AS.iconUrl(k)}" alt="" loading="lazy"><div class="wc-name">${w.name}</div><div class="wc-desc">${w.desc}</div>${statBars(w)}</button>`;
       }).join('')}
     </div>`).join('');
 }
 function renderChips() {
-  $('loadout-chips').innerHTML = SLOTS.map((s) => `<div class="chip"><small>${SLOT_LABEL[s]}</small>${WEAPONS[loadout[s]].name}</div>`).join('');
+  $('loadout-chips').innerHTML = SLOTS.map((s) => `<div class="chip"><img src="${AS.iconUrl(loadout[s])}" alt=""><span><small>${SLOT_LABEL[s]}</small>${WEAPONS[loadout[s]].name}</span></div>`).join('');
 }
 function openLoadout() {
   if (document.pointerLockElement) document.exitPointerLock();
@@ -287,7 +292,7 @@ function renderRoom(r) {
 // ═════════════ VS / 결과 ═════════════
 function showVs(r) {
   const col = (t) => r.players.filter((p) => p.team === t).map((p) =>
-    `<div><div class="vn">${esc(p.name)}</div><div class="vw">${WEAPONS[p.loadout.primary].name} · ${WEAPONS[p.loadout.secondary].name}${p.streak ? ` · <span class="vk">${p.streak}연승 중</span>` : ''}</div></div>`).join('');
+    `<div><img class="vimg" src="${AS.iconUrl(p.loadout.primary)}" alt=""><div class="vn">${esc(p.name)}</div><div class="vw">${WEAPONS[p.loadout.primary].name} · ${WEAPONS[p.loadout.secondary].name}${p.streak ? ` · <span class="vk">${p.streak}연승 중</span>` : ''}</div></div>`).join('');
   $('vs-red').innerHTML = col(0);
   $('vs-blue').innerHTML = col(1);
   let sub = `${MAPS[r.map].name} · ${r.winRounds}선승`;
@@ -369,9 +374,11 @@ document.addEventListener('keydown', (e) => {
 socket.on('connect', () => {
   sendHello();
   if (app.room) {
-    toast('서버에 다시 연결됐어요. 방에 다시 들어가 주세요');
+    // 잠깐 끊겼다가 돌아오면 원래 방으로 자동 재입장
+    const id = app.room.id;
     app.room = null;
-    showScreen('lobby');
+    toast('다시 연결됐어요. 방에 다시 들어가는 중...');
+    socket.emit('joinRoom', { id, spectate: app.spectator });
   }
 });
 socket.on('disconnect', () => toast('서버 연결이 끊겼어요. 다시 연결하는 중...', 4000));
@@ -434,3 +441,18 @@ setInterval(() => {
 }, 2000);
 
 showScreen('lobby');
+
+// 3D 모델 미리 받기 (받는 동안은 블록 모델로 대신 표시)
+(async () => {
+  const bar = $('load-bar');
+  try {
+    await AS.preloadAll((t) => { bar.querySelector('i').style.width = Math.round(t * 100) + '%'; });
+    await AS.loadWeapons();
+    await AS.loadCharacter();
+    bar.classList.add('done');
+    game.onAssetsReady();
+  } catch (e) {
+    console.warn('3D 모델을 못 불러와서 블록 모델로 진행해요', e);
+    bar.querySelector('span').textContent = '모델 로딩 실패 (블록 모델 사용)';
+  }
+})();
