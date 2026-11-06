@@ -93,7 +93,7 @@ export const WEAPONS = {
     speed: 1.18, desc: '들고 뛰면 제일 빠르다.',
   },
   katana: {
-    name: '카타나', slot: 'melee', kind: 'melee',
+    name: '장검', slot: 'melee', kind: 'melee',
     rate: 0.72, dmg: 62, range: 3.3, arc: 0.75, knock: 3,
     speed: 1.1, desc: '리치가 길고 두 방에 끝.',
   },

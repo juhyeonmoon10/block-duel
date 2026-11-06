@@ -3,19 +3,22 @@
 
 function builder() {
   const boxes = [];
-  const B = (x0, y0, z0, x1, y1, z1, c) => {
-    boxes.push({
+  // p: 이 박스를 그릴 3D 소품 이름 (없으면 텍스처 박스). 충돌은 항상 박스 기준.
+  const B = (x0, y0, z0, x1, y1, z1, c, p) => {
+    const b = {
       min: [Math.min(x0, x1), Math.min(y0, y1), Math.min(z0, z1)],
       max: [Math.max(x0, x1), Math.max(y0, y1), Math.max(z0, z1)],
       c,
-    });
+    };
+    if (p) b.p = p;
+    boxes.push(b);
   };
   // Z 대칭 (팀 반대편 복사)
-  const mz = (x0, y0, z0, x1, y1, z1, c) => { B(x0, y0, z0, x1, y1, z1, c); B(x0, y0, -z0, x1, y1, -z1, c); };
+  const mz = (x0, y0, z0, x1, y1, z1, c, p) => { B(x0, y0, z0, x1, y1, z1, c, p); B(x0, y0, -z0, x1, y1, -z1, c, p); };
   // X 대칭
-  const mx = (x0, y0, z0, x1, y1, z1, c) => { B(x0, y0, z0, x1, y1, z1, c); B(-x0, y0, z0, -x1, y1, z1, c); };
+  const mx = (x0, y0, z0, x1, y1, z1, c, p) => { B(x0, y0, z0, x1, y1, z1, c, p); B(-x0, y0, z0, -x1, y1, z1, c, p); };
   // 4방향 대칭
-  const m4 = (x0, y0, z0, x1, y1, z1, c) => { mz(x0, y0, z0, x1, y1, z1, c); mz(-x0, y0, z0, -x1, y1, z1, c); };
+  const m4 = (x0, y0, z0, x1, y1, z1, c, p) => { mz(x0, y0, z0, x1, y1, z1, c, p); mz(-x0, y0, z0, -x1, y1, z1, c, p); };
   // Z 방향 계단: 시작점에서 dir 방향으로 내려감
   const stairsZ = (x0, x1, zStart, dir, n, depth, h, c, sym) => {
     for (let i = 0; i < n; i++) {
@@ -58,7 +61,7 @@ function warehouse() {
   mz(-2.6, 0, -14.2, 2.6, 1.1, -13.4, COVER);
   // 사이드 기둥 & 엄폐
   m4(12.6, 0, -13, 14.2, 5.5, -11.4, PILLAR);
-  mx(13.4, 0, -3, 15.4, 2.8, 3, TEAL);
+  mx(13.4, 0, -3, 15.4, 2.6, 3, TEAL, 'truck-green-cargo');
   m4(15.6, 0, -8, 17, 1.2, -5.5, CRATE);
 
   // 중앙 단상 + 4면 계단
@@ -121,9 +124,8 @@ function rooftops() {
   stairsZ(12.6, 14.6, -12, -1, 5, 1, 0.5, STAIR, m4);
 
   // 거리 위 자동차 엄폐
-  m4(6.2, 0, -12.5, 8.2, 1.4, -8.5, CAR1);
-  m4(6.6, 1.4, -11.6, 7.8, 2.0, -9.4, CAR1);
-  mx(-3.5, 0, -12.5, -1.5, 1.4, -8.5, CAR2);
+  m4(6.2, 0, -12.5, 8.2, 2.1, -8.5, CAR1, 'truck-grey');
+  mx(-3.5, 0, -12.5, -1.5, 1.8, -8.5, CAR2, 'truck-green-cargo');
 
   return {
     id: 'rooftops', name: '루프탑', desc: '높은 곳을 잡아라. 떨어져도 계단으로 복귀',
