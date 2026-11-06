@@ -204,6 +204,8 @@ details[open] summary::before { content: '−'; }
 .wcard .wc-name { font: 400 18px var(--display); }
 .wcard .wc-desc { font-size: 12px; font-weight: 700; color: #4a5068; margin: 2px 0 6px; }
 .wcard.on .wc-desc { color: var(--ink); }
+.stk { font-size: 11px; font-weight: 800; color: #b3263a; margin: 0 0 3px; }
+.wcard.on .stk { color: var(--ink); }
 .stat { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; margin-top: 3px; }
 .stat i { height: 7px; background: #e1e3ea; border-radius: 4px; overflow: hidden; display: block; }
 .stat i b { display: block; height: 100%; background: var(--ink); }
