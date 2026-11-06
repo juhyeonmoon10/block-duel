@@ -1258,7 +1258,7 @@ export class Game {
         const moved = prev ? Math.hypot(s.p[0] - prev[0], s.p[2] - prev[2]) / Math.max(dt, 1e-3) : 0;
         rp.spd = (rp.spd || 0) + (moved - (rp.spd || 0)) * Math.min(1, dt * 10);
         const vy = prev ? (s.p[1] - prev[1]) / Math.max(dt, 1e-3) : 0;
-        rp.airT = Math.abs(vy) > 2 ? 0.15 : Math.max(0, (rp.airT || 0) - dt);
+        rp.airT = Math.abs(vy) > 4 ? 0.2 : Math.max(0, (rp.airT || 0) - dt);
         const kind = WEAPONS[s.w]?.kind;
         animateAvatar(av, {
           dt, speed: rp.spd, air: rp.airT > 0, pitch: s.pitch, alive: s.alive,

@@ -151,6 +151,8 @@ function splitClip(name, part) {
   const src = soldier.clips[name];
   const tracks = src.tracks.filter((t) => {
     const bone = t.name.split('.').slice(0, -1).join('.');
+    // 점프는 몸 전체를 0.6m 띄워서 보이는 위치와 판정 위치가 어긋남 → 제자리 동작으로
+    if (name === 'Jump' && t.name.endsWith('.position') && (bone === 'Hips' || bone === 'Bone' || bone === 'Body')) return false;
     return part === 'upper' ? UPPER.has(bone) : !UPPER.has(bone);
   });
   const c = new THREE.AnimationClip(name + '_' + part, src.duration, tracks);
