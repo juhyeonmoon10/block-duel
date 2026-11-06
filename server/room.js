@@ -361,6 +361,7 @@ export class Room {
     const s = w.throwSpeed;
     this.spawnProj(p, m.w, w.proj, o, [d[0] * s, d[1] * s + 3.2, d[2] * s]);
     p.socket.emit('util', { left: p.utilLeft });
+    p.socket.to(this.ch).emit('fx', { t: 'throw', by: id, w: m.w });
   }
 
   onHeal(id) {

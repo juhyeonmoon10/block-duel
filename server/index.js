@@ -22,7 +22,8 @@ app.use('/vendor/jsm', express.static(path.join(ROOT, 'node_modules/three/exampl
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, online: io.engine.clientsCount }));
 
 const server = http.createServer(app);
-const io = new Server(server, { pingInterval: 5000, pingTimeout: 8000 });
+// 느린 크롬북이 모델을 불러오느라 잠깐 멈춰도 끊기지 않게 넉넉히
+const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
 
 // ─────────────── 연승 랭킹 (파일에 저장) ───────────────
 const DATA_DIR = path.join(ROOT, 'data');
